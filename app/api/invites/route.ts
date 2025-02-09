@@ -1,7 +1,6 @@
 import { NextResponse } from "next/server";
 import { supabase } from "@/lib/supabase";
 
-// Criar um novo convite
 export async function POST(req: Request) {
   const { codigo_convite, telefone_convidado } = await req.json();
 
@@ -18,7 +17,6 @@ export async function POST(req: Request) {
   return NextResponse.json({ message: "Convite registrado!", data }, { status: 201 });
 }
 
-// Verificar convites de um usuário
 export async function GET(req: Request) {
   const { searchParams } = new URL(req.url);
   const codigo_convite = searchParams.get("codigo_convite");
