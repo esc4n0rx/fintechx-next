@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { useForm } from "react-hook-form";
-import { useRouter, useSearchParams } from "next/navigation";
+import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabase";
 import { Input } from "@/components/ui/Input";
 import { Captcha } from "@/components/ui/Captcha";
@@ -11,19 +11,19 @@ import { Lock, Phone, User, Key, AlertCircle, CheckCircle } from "lucide-react";
 
 export default function RegisterPage() {
   const router = useRouter();
-  const searchParams = useSearchParams();
   const { register, handleSubmit, setValue } = useForm();
   const [captcha, setCaptcha] = useState("");
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState<{ type: "error" | "success"; text: string } | null>(null);
 
-  // Captura o código de convite da URL
+  // Captura o código de convite da URL sem usar useSearchParams()
   useEffect(() => {
-    const inviteCode = searchParams.get("invite");
+    const params = new URLSearchParams(window.location.search);
+    const inviteCode = params.get("invite");
     if (inviteCode) {
       setValue("inviteCode", inviteCode);
     }
-  }, [searchParams, setValue]);
+  }, [setValue]);
 
   const generateCaptcha = () => {
     const chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";

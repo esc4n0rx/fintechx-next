@@ -2,10 +2,11 @@
 
 import { useEffect, useState } from "react";
 import { supabase } from "@/lib/supabase";
+import Swal from "sweetalert2";
 import { Home, Users, Briefcase, User, XCircle, Copy } from "lucide-react";
 
 export default function DashboardPage() {
-  // Incluí a propriedade `codigo_convite_new` no state de usuário para usá-la no link de convite
+
   const [user, setUser] = useState<{
     nome: string;
     saldo_inicial: number;
@@ -16,7 +17,6 @@ export default function DashboardPage() {
   const [showPopup, setShowPopup] = useState(true);
   const [invites, setInvites] = useState<any[]>([]);
 
-  // Função para buscar os convites com base no código
   async function fetchInvites(codigoConvite: string) {
     const { data, error } = await supabase
       .from("fintechx_convites")
@@ -26,7 +26,6 @@ export default function DashboardPage() {
     if (!error) setInvites(data || []);
   }
 
-  // useEffect para buscar os dados do usuário
   useEffect(() => {
     async function fetchUser() {
       const telefone = localStorage.getItem("user_phone");
@@ -51,7 +50,6 @@ export default function DashboardPage() {
     fetchUser();
   }, []);
 
-  // useEffect para buscar os convites assim que o usuário for carregado
   useEffect(() => {
     if (user?.codigo_convite_new) {
       fetchInvites(user.codigo_convite_new);
@@ -65,12 +63,121 @@ export default function DashboardPage() {
 
   const profileImages = [
     "profile1.png",
-    "profile2.png",
-    "profile3.png",
-    "profile4.png",
-    "profile5.png",
   ];
   const randomProfile = profileImages[Math.floor(Math.random() * profileImages.length)];
+
+  const cryptocurrencies = [
+    {
+      name: "Bitcoin",
+      logo: "/logos/btc.png",
+      yield: 15,    
+      price: 70,
+    },
+    {
+      name: "Ethereum",
+      logo: "/logos/ethereum.png",
+      yield: 25,
+      price: 100,
+    },
+    {
+      name: "Solana",
+      logo: "/logos/sol",
+      yield: 35,
+      price: 120,
+    },
+    {
+      name: "Litecoin",
+      logo: "/logos/litecoin.png",
+      yield: 45,
+      price: 150,
+    },
+    {
+      name: "Hedera",
+      logo: "/logos/hedera.png",
+      yield: 50,
+      price: 200,
+    },
+    {
+      name: "Polkadot",
+      logo: "/logos/polkadot.png",
+      yield: 65,
+      price: 250,
+    },
+    {
+      name: "Tron",
+      logo: "/logos/tron.png",
+      yield: 75,
+      price: 300,
+    },
+    {
+      name: "Dogecoin",
+      logo: "/logos/doge.png",
+      yield: 140,
+      price: 340,
+    },
+    {
+      name: "Monero",
+      logo: "/logos/monero.png",
+      yield: 170,
+      price: 370,
+    },
+    {
+      name: "Sui",
+      logo: "/logos/sui.png",
+      yield: 200,
+      price: 400,
+    },
+  ];
+
+const comprarProduto = async (crypto: { name: string; price: number; yield: number }) => {
+  if (!user) {
+    Swal.fire({
+      title: "Erro",
+      text: "Usuário não autenticado.",
+      icon: "error",
+      confirmButtonText: "OK",
+    });
+    return;
+  }
+
+  const userPhone = localStorage.getItem("user_phone");
+
+  const response = await fetch("/api/products", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      userPhone,
+      productName: crypto.name,
+      price: crypto.price,
+      yieldPerDay: crypto.yield,
+    }),
+  });
+
+  const result = await response.json();
+
+  if (response.ok) {
+    setUser((prevUser) =>
+      prevUser
+        ? { ...prevUser, saldo_inicial: prevUser.saldo_inicial - crypto.price }
+        : prevUser
+    );
+    Swal.fire({
+      title: "Sucesso",
+      text: result.message,
+      icon: "success",
+      confirmButtonText: "OK",
+    });
+  } else {
+    Swal.fire({
+      title: "Erro",
+      text: result.error,
+      icon: "error",
+      confirmButtonText: "OK",
+    });
+  }
+};
+
+
 
   return (
     <div className="flex h-screen items-center justify-center bg-gradient-to-b from-gray-900 to-black p-4">
@@ -201,20 +308,55 @@ export default function DashboardPage() {
           </div>
         )}
 
-        {/* Seção de Investimentos */}
-        {activeTab === "investimentos" && (
-          <div className="text-center">
-            <h2 className="text-2xl font-semibold">Investimentos</h2>
-            <p className="text-gray-400 mt-2">
-              Veja oportunidades de investimento disponíveis.
-            </p>
-            <div className="mt-4 p-4 bg-gray-700 rounded-lg">
-              <p className="text-white">
-                📊 Em breve, detalhes sobre seus investimentos!
-              </p>
+    {activeTab === "investimentos" && (
+      <div className="text-center">
+        <h2 className="text-2xl font-semibold">Investimentos</h2>
+        <p className="text-gray-400 mt-2">
+          Confira abaixo um tutorial rápido e as oportunidades de investimento disponíveis.
+        </p>
+
+        <div className="mt-4 p-4 bg-gray-700 rounded-lg text-left">
+          <p><strong>1.</strong> Selecione uma criptomoeda na lista.</p>
+          <p><strong>2.</strong> Veja o rendimento diário e o preço unitário.</p>
+          <p><strong>3.</strong> Clique em "Comprar" para adquirir o produto.</p>
+          <p><strong>4.</strong> O rendimento será creditado a cada 24h (caso o produto esteja ativo).</p>
+          <p><strong>5.</strong> Cada produto tem validade de 7 dias.</p>
+        </div>
+
+              <div className="mt-6 h-64 overflow-y-auto p-4 bg-gray-800 rounded-lg border border-gray-700">
+                {cryptocurrencies.map((crypto, index) => (
+                  <div
+                    key={index}
+                    className="flex items-center justify-between p-2 border-b border-gray-600 last:border-b-0"
+                  >
+                    <div className="flex items-center">
+                      <img
+                        src={crypto.logo}
+                        alt={crypto.name}
+                        className="w-8 h-8 mr-2"
+                      />
+                      <div>
+                        <p className="font-semibold">{crypto.name}</p>
+                        <p className="text-sm text-gray-400">
+                          Rendimento: R$ {crypto.yield} / dia
+                        </p>
+                      </div>
+                    </div>
+                    <div className="text-right">
+                      <p className="text-sm">Preço: R$ {crypto.price}</p>
+                      <button
+                        onClick={() => comprarProduto(crypto)}
+                        className="mt-2 bg-blue-600 hover:bg-blue-700 text-white py-1 px-3 rounded"
+                      >
+                        Comprar
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
             </div>
-          </div>
-        )}
+          )}
+
 
         {/* Seção de Conta */}
         {activeTab === "conta" && (

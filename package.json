@@ -14,7 +14,8 @@
     "next": "15.1.6",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
-    "react-hook-form": "^7.54.2"
+    "react-hook-form": "^7.54.2",
+    "sweetalert2": "^11.16.0"
   },
   "devDependencies": {
     "@types/node": "^20",
