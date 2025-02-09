@@ -16,7 +16,6 @@ export default function RegisterPage() {
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState<{ type: "error" | "success"; text: string } | null>(null);
 
-  // Captura o código de convite da URL sem usar useSearchParams()
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const inviteCode = params.get("invite");
@@ -32,36 +31,34 @@ export default function RegisterPage() {
 
   const onSubmit = async (data: any) => {
     setMessage(null);
-
+  
     if (data.captcha !== captcha) {
       setMessage({ type: "error", text: "Captcha incorreto!" });
       return;
     }
-
+  
     setLoading(true);
-
-    // Verifica se o telefone já está cadastrado
+  
     const { data: existingUser, error: checkError } = await supabase
       .from("fintechx_usuarios")
       .select("telefone")
       .eq("telefone", data.phone)
       .single();
-
+  
     if (existingUser) {
       setMessage({ type: "error", text: "Usuário já cadastrado! Faça login." });
       router.push("/login");
       setLoading(false);
       return;
     }
-
+  
     if (checkError && checkError.code !== "PGRST116") {
       console.error("Erro ao verificar usuário:", checkError);
       setMessage({ type: "error", text: "Erro ao verificar usuário. Tente novamente." });
       setLoading(false);
       return;
     }
-
-    // Criar novo usuário no banco de dados
+  
     const { error } = await supabase.from("fintechx_usuarios").insert([
       {
         nome: data.name,
@@ -75,17 +72,55 @@ export default function RegisterPage() {
         total_produtos: 0,
       },
     ]);
-
+  
     if (error) {
       console.error("Erro ao registrar usuário:", error);
       setMessage({ type: "error", text: "Erro ao criar conta. Tente novamente." });
       setLoading(false);
       return;
     }
+  
 
+    if (data.inviteCode) {
+
+      const { data: inviterData, error: fetchInviterError } = await supabase
+        .from("fintechx_usuarios")
+        .select("total_convite")
+        .eq("codigo_convite_new", data.inviteCode)
+        .single();
+  
+      if (!fetchInviterError && inviterData) {
+
+        const newTotal = inviterData.total_convite + 1;
+        const { error: updateError } = await supabase
+          .from("fintechx_usuarios")
+          .update({ total_convite: newTotal })
+          .eq("codigo_convite_new", data.inviteCode);
+        if (updateError) {
+          console.error("Erro ao atualizar total de convites:", updateError);
+        }
+      } else {
+        console.error("Usuário que gerou o convite não encontrado:", fetchInviterError);
+      }
+  
+      const { error: insertInviteError } = await supabase
+        .from("fintechx_convites")
+        .insert([
+          {
+            codigo_convite: data.inviteCode,
+            telefone_convidado: data.phone,
+            bonus_pago: false,
+          },
+        ]);
+      if (insertInviteError) {
+        console.error("Erro ao inserir convite:", insertInviteError);
+      }
+    }
+  
     setMessage({ type: "success", text: "Conta criada com sucesso! Redirecionando para login..." });
     setTimeout(() => router.push("/login"), 2000);
   };
+  
 
   return (
     <div className="flex h-screen items-center justify-center bg-gradient-to-b from-gray-900 to-black p-4">

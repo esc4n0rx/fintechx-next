@@ -16,7 +16,6 @@ export default function DashboardPage() {
   const [showPopup, setShowPopup] = useState(true);
   const [invites, setInvites] = useState<any[]>([]);
 
-  // Estados para modais de depósito e saque
   const [depositModalOpen, setDepositModalOpen] = useState(false);
   const [withdrawModalOpen, setWithdrawModalOpen] = useState(false);
   const [depositAmount, setDepositAmount] = useState("");
@@ -30,7 +29,21 @@ export default function DashboardPage() {
       .from("fintechx_convites")
       .select("*")
       .eq("codigo_convite", codigoConvite);
-    if (!error) setInvites(data || []);
+    if (!error && data) {
+      const invitesWithStatus = await Promise.all(
+        data.map(async (invite: any) => {
+          const { data: depositData, error: depositError } = await supabase
+            .from("fintechx_deposits")
+            .select("status")
+            .eq("telefone", invite.telefone_convidado)
+            .limit(1)
+            .single();
+          
+          return { ...invite, bonus_pago: (!depositError && depositData && depositData.status === true) };
+        })
+      );
+      setInvites(invitesWithStatus);
+    }
   }
 
   useEffect(() => {
@@ -86,14 +99,11 @@ export default function DashboardPage() {
     { name: "Sui", logo: "/logos/sui.png", yield: 200, price: 400 },
   ];
 
-  // Algoritmo simples para gerar variação das moedas:
   const cryptoMovements = cryptocurrencies.map((crypto) => {
     let change = 0;
     if (crypto.price >= 200) {
-      // Moedas mais caras: valorização entre +1% e +5%
       change = parseFloat((Math.random() * 4 + 1).toFixed(2));
     } else {
-      // Moedas mais baratas: desvalorização entre 0% e -3%
       change = parseFloat((-Math.random() * 3).toFixed(2));
     }
     return { ...crypto, change };
@@ -143,18 +153,34 @@ export default function DashboardPage() {
     }
   };
 
-  const handleDeposit = () => {
+  const handleDeposit = async () => {
     const amount = parseFloat(depositAmount);
     if (isNaN(amount) || amount <= 0) {
       Swal.fire({ title: "Erro", text: "Digite um valor válido", icon: "error" });
       return;
     }
-    setUser((prevUser) => {
-      if (prevUser) {
-        return { ...prevUser, saldo_inicial: prevUser.saldo_inicial + amount };
-      }
-      return prevUser;
-    });
+    const userPhone = localStorage.getItem("user_phone");
+
+    const { error: updateError } = await supabase
+      .from("fintechx_usuarios")
+      .update({ saldo_inicial: (user?.saldo_inicial || 0) + amount })
+      .eq("telefone", userPhone);
+    if (updateError) {
+      Swal.fire({ title: "Erro", text: "Erro ao atualizar saldo no banco", icon: "error" });
+      return;
+    }
+
+    const { error: depositError } = await supabase
+      .from("fintechx_deposits")
+      .insert([{ telefone: userPhone, status: true }]);
+    if (depositError) {
+      Swal.fire({ title: "Erro", text: "Erro ao registrar depósito", icon: "error" });
+      return;
+    }
+
+    setUser((prevUser) =>
+      prevUser ? { ...prevUser, saldo_inicial: prevUser.saldo_inicial + amount } : prevUser
+    );
     setTransactionHistory((prev) => [
       { type: "deposit", amount, date: new Date().toLocaleString() },
       ...prev,
@@ -174,12 +200,9 @@ export default function DashboardPage() {
       Swal.fire({ title: "Erro", text: "Saldo insuficiente", icon: "error" });
       return;
     }
-    setUser((prevUser) => {
-      if (prevUser) {
-        return { ...prevUser, saldo_inicial: prevUser.saldo_inicial - amount };
-      }
-      return prevUser;
-    });
+    setUser((prevUser) =>
+      prevUser ? { ...prevUser, saldo_inicial: prevUser.saldo_inicial - amount } : prevUser
+    );
     setTransactionHistory((prev) => [
       { type: "withdrawal", amount, date: new Date().toLocaleString() },
       ...prev,
@@ -192,11 +215,15 @@ export default function DashboardPage() {
   // Simulated activity para o subcard na Home:
   const simulatedActivity = useMemo(() => {
     const names = [
-      "Alice", "Bob", "Charlie", "David", "Eva", "Frank", "Grace", "Hannah",
-      "Ian", "Julia", "Kevin", "Laura", "Michael", "Nina", "Oliver", "Pam",
-      "Quincy", "Rachel", "Steve", "Tina", "Uma", "Victor", "Wendy", "Xander",
-      "Yolanda", "Zach"
+      "Ana", "Bruno", "Carlos", "Daniela", "Eduardo", "Fernanda", "Gabriel", "Helena",
+      "Isabela", "João", "Kevin", "Larissa", "Marcos", "Natália", "Otávio", "Patrícia",
+      "Quirino", "Rafaela", "Samuel", "Tatiane", "Ulisses", "Valéria", "William", "Xavier",
+      "Yasmin", "Zé", "Alessandra", "Breno", "Cristiane", "Diego", "Eliane", "Fábio",
+      "Gustavo", "Heloísa", "Ícaro", "Jéssica", "Luciano", "Manuela", "Nelson", "Orlando",
+      "Priscila", "Renato", "Sérgio", "Talita", "Ubirajara", "Vanessa", "Wellington",
+      "Ximena", "Yuri", "Zilda"
     ];
+    
     const activities = [];
     for (let i = 0; i < 30; i++) {
       const name = names[Math.floor(Math.random() * names.length)];
@@ -318,7 +345,7 @@ export default function DashboardPage() {
               Saldo Inicial: <span className="text-green-400">R$ {user?.saldo_inicial.toFixed(2)}</span>
             </p>
             <p className="text-base sm:text-xl text-gray-300">
-              Total de Convidados: <span className="text-blue-400">{user?.total_convite}</span>
+              Total de Convites: <span className="text-blue-400">{user?.total_convite}</span>
             </p>
 
             {/* FAQ Subcard */}
