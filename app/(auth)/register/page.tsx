@@ -1,8 +1,8 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useForm } from "react-hook-form";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { supabase } from "@/lib/supabase";
 import { Input } from "@/components/ui/Input";
 import { Captcha } from "@/components/ui/Captcha";
@@ -11,10 +11,19 @@ import { Lock, Phone, User, Key, AlertCircle, CheckCircle } from "lucide-react";
 
 export default function RegisterPage() {
   const router = useRouter();
-  const { register, handleSubmit } = useForm();
+  const searchParams = useSearchParams();
+  const { register, handleSubmit, setValue } = useForm();
   const [captcha, setCaptcha] = useState("");
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState<{ type: "error" | "success"; text: string } | null>(null);
+
+  // Captura o código de convite da URL
+  useEffect(() => {
+    const inviteCode = searchParams.get("invite");
+    if (inviteCode) {
+      setValue("inviteCode", inviteCode);
+    }
+  }, [searchParams, setValue]);
 
   const generateCaptcha = () => {
     const chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
@@ -31,6 +40,7 @@ export default function RegisterPage() {
 
     setLoading(true);
 
+    // Verifica se o telefone já está cadastrado
     const { data: existingUser, error: checkError } = await supabase
       .from("fintechx_usuarios")
       .select("telefone")
@@ -51,6 +61,7 @@ export default function RegisterPage() {
       return;
     }
 
+    // Criar novo usuário no banco de dados
     const { error } = await supabase.from("fintechx_usuarios").insert([
       {
         nome: data.name,
@@ -81,6 +92,7 @@ export default function RegisterPage() {
       <div className="w-full max-w-md p-6 bg-gray-800 text-white rounded-2xl shadow-lg border border-gray-700">
         <h2 className="text-2xl font-semibold text-center mb-6">Criar Conta</h2>
 
+        {/* Notificação dentro do card */}
         {message && (
           <div
             className={`flex items-center gap-2 p-3 rounded-lg mb-4 ${
