@@ -11,11 +11,13 @@ export default function DashboardPage() {
     saldo_inicial: number;
     total_convite: number;
     codigo_convite_new?: string;
+    codigo_convite_ini?: string; // para saber se o usuário foi convidado
   } | null>(null);
   const [activeTab, setActiveTab] = useState<"home" | "convites" | "investimentos" | "conta">("home");
   const [showPopup, setShowPopup] = useState(true);
   const [invites, setInvites] = useState<any[]>([]);
 
+  // Estados para modais de depósito e saque
   const [depositModalOpen, setDepositModalOpen] = useState(false);
   const [withdrawModalOpen, setWithdrawModalOpen] = useState(false);
   const [depositAmount, setDepositAmount] = useState("");
@@ -24,6 +26,11 @@ export default function DashboardPage() {
     Array<{ type: "deposit" | "withdrawal"; amount: number; date: string }>
   >([]);
 
+  // Estado para produtos adquiridos
+  const [hasProducts, setHasProducts] = useState(false);
+  const [products, setProducts] = useState<any[]>([]);
+
+  // Função para buscar os convites e verificar depósito (bonus_creditado)
   async function fetchInvites(codigoConvite: string) {
     const { data, error } = await supabase
       .from("fintechx_convites")
@@ -34,17 +41,55 @@ export default function DashboardPage() {
         data.map(async (invite: any) => {
           const { data: depositData, error: depositError } = await supabase
             .from("fintechx_deposits")
-            .select("status")
+            .select("status, bonus_creditado, saldo")
             .eq("telefone", invite.telefone_convidado)
             .limit(1)
             .single();
-          
-          return { ...invite, bonus_pago: (!depositError && depositData && depositData.status === true) };
+          return { ...invite, bonus_pago: (!depositError && depositData && depositData.status === true && depositData.bonus_creditado === true) };
         })
       );
       setInvites(invitesWithStatus);
     }
   }
+
+  // Verifica se o usuário já possui produtos
+  useEffect(() => {
+    async function checkProducts() {
+      const telefone = localStorage.getItem("user_phone");
+      if (telefone) {
+        const { data, error } = await supabase
+          .from("fintechx_products")
+          .select("id")
+          .eq("telefone", telefone)
+          .limit(1);
+        if (data && data.length > 0) {
+          setHasProducts(true);
+        } else {
+          setHasProducts(false);
+        }
+      }
+    }
+    checkProducts();
+  }, []);
+
+  // Busca produtos do usuário (caso tenha)
+  useEffect(() => {
+    async function fetchProducts() {
+      const telefone = localStorage.getItem("user_phone");
+      if (telefone) {
+        const { data, error } = await supabase
+          .from("fintechx_products")
+          .select("*")
+          .eq("telefone", telefone);
+        if (!error && data) {
+          setProducts(data);
+        }
+      }
+    }
+    if (hasProducts) {
+      fetchProducts();
+    }
+  }, [hasProducts]);
 
   useEffect(() => {
     async function fetchUser() {
@@ -55,7 +100,7 @@ export default function DashboardPage() {
       }
       const { data, error } = await supabase
         .from("fintechx_usuarios")
-        .select("nome, saldo_inicial, total_convite, codigo_convite_new")
+        .select("nome, saldo_inicial, total_convite, codigo_convite_new, codigo_convite_ini")
         .eq("telefone", telefone)
         .single();
       if (error || !data) {
@@ -153,6 +198,14 @@ export default function DashboardPage() {
     }
   };
 
+  // Função auxiliar para calcular o prazo para o próximo rendimento (24h após o último cálculo)
+  const calculateNextPayment = (last_calculo: string) => {
+    const last = new Date(last_calculo);
+    const next = new Date(last.getTime() + 24 * 60 * 60 * 1000);
+    return next.toLocaleString();
+  };
+
+  // Lógica de Depósito com ajuste de bônus para o convidador
   const handleDeposit = async () => {
     const amount = parseFloat(depositAmount);
     if (isNaN(amount) || amount <= 0) {
@@ -161,6 +214,7 @@ export default function DashboardPage() {
     }
     const userPhone = localStorage.getItem("user_phone");
 
+    // Atualiza o saldo do usuário depositante na tabela fintechx_usuarios
     const { error: updateError } = await supabase
       .from("fintechx_usuarios")
       .update({ saldo_inicial: (user?.saldo_inicial || 0) + amount })
@@ -170,14 +224,45 @@ export default function DashboardPage() {
       return;
     }
 
+    // Insere o depósito na tabela fintechx_deposits com o valor depositado e bonus_creditado false
     const { error: depositError } = await supabase
       .from("fintechx_deposits")
-      .insert([{ telefone: userPhone, status: true }]);
+      .insert([{ telefone: userPhone, status: true, saldo: amount, bonus_creditado: false }]);
     if (depositError) {
       Swal.fire({ title: "Erro", text: "Erro ao registrar depósito", icon: "error" });
       return;
     }
 
+    // Se o usuário foi convidado, atualizar o saldo do convidador (apenas se o bônus ainda não foi creditado)
+    if (user && user.codigo_convite_ini) {
+      const inviterCode = user.codigo_convite_ini;
+      const { data: inviterData, error: inviterError } = await supabase
+        .from("fintechx_usuarios")
+        .select("telefone, saldo_inicial")
+        .eq("codigo_convite_new", inviterCode)
+        .single();
+      if (!inviterError && inviterData) {
+        const bonus = amount * 0.37;
+        const { error: bonusUpdateError } = await supabase
+          .from("fintechx_usuarios")
+          .update({ saldo_inicial: inviterData.saldo_inicial + bonus })
+          .eq("telefone", inviterData.telefone);
+        if (bonusUpdateError) {
+          console.error("Erro ao atualizar bônus do convidador", bonusUpdateError);
+        }
+        // Atualiza o registro de depósito para marcar que o bônus foi creditado (para que não seja feito novamente)
+        const { error: bonusCreditError } = await supabase
+          .from("fintechx_deposits")
+          .update({ bonus_creditado: true })
+          .eq("telefone", userPhone)
+          .eq("bonus_creditado", false);
+        if (bonusCreditError) {
+          console.error("Erro ao marcar bônus creditado", bonusCreditError);
+        }
+      }
+    }
+
+    // Atualiza o estado local
     setUser((prevUser) =>
       prevUser ? { ...prevUser, saldo_inicial: prevUser.saldo_inicial + amount } : prevUser
     );
@@ -190,7 +275,7 @@ export default function DashboardPage() {
     setDepositAmount("");
   };
 
-  const handleWithdraw = () => {
+  const handleWithdraw = async () => {
     const amount = parseFloat(withdrawAmount);
     if (isNaN(amount) || amount <= 0) {
       Swal.fire({ title: "Erro", text: "Digite um valor válido", icon: "error" });
@@ -223,7 +308,6 @@ export default function DashboardPage() {
       "Priscila", "Renato", "Sérgio", "Talita", "Ubirajara", "Vanessa", "Wellington",
       "Ximena", "Yuri", "Zilda"
     ];
-    
     const activities = [];
     for (let i = 0; i < 30; i++) {
       const name = names[Math.floor(Math.random() * names.length)];
@@ -347,16 +431,49 @@ export default function DashboardPage() {
             <p className="text-base sm:text-xl text-gray-300">
               Total de Convites: <span className="text-blue-400">{user?.total_convite}</span>
             </p>
-
-            {/* FAQ Subcard */}
-            <div className="mt-4 sm:mt-8 bg-gray-700 p-4 sm:p-8 rounded-lg border border-gray-600">
-              <h3 className="text-lg sm:text-xl font-semibold mb-3 sm:mb-4 text-center">❓ Perguntas Frequentes</h3>
-              <div className="space-y-2 sm:space-y-3 text-sm sm:text-base text-gray-300">
-                <p><strong>📌 Como funciona?</strong> A FintechX permite investir e convidar amigos para obter retornos.</p>
-                <p><strong>💰 Como sacar meu saldo?</strong> Basta acessar sua conta e configurar sua chave Pix.</p>
-                <p><strong>🎯 Como faço para investir?</strong> Acesse a aba de investimentos na navbar abaixo.</p>
+            {hasProducts ? (
+              // Card de Gerenciamento de Ativos
+              <div className="mt-4 sm:mt-8 bg-gray-700 p-4 sm:p-8 rounded-lg border border-gray-600">
+                <h3 className="text-lg sm:text-xl font-semibold mb-3 text-center">Gerenciamento de Ativos</h3>
+                {products.length > 0 ? (
+                  products.map((prod: any, index: number) => (
+                    <div key={index} className="border-b border-gray-600 py-2 text-sm sm:text-base">
+                      <p><strong>Produto:</strong> {prod.product}</p>
+                      <p><strong>Rendimento Diário:</strong> R$ {prod.rendimento.toFixed(2)}</p>
+                      <p><strong>Próximo Pagamento:</strong> {calculateNextPayment(prod.last_calculo)}</p>
+                    </div>
+                  ))
+                ) : (
+                  <p className="text-center text-sm sm:text-base text-gray-400">Nenhum produto registrado.</p>
+                )}
               </div>
-            </div>
+            ) : (
+              <div className="mt-4 sm:mt-8 bg-gray-700 p-4 sm:p-8 rounded-lg border border-gray-600">
+                <h3 className="text-lg sm:text-xl font-semibold mb-3 sm:mb-4 text-center">❓ Perguntas Frequentes</h3>
+                <div className="space-y-2 sm:space-y-3 text-sm sm:text-base text-gray-300">
+                  <p>
+                    <strong>📌 Como a FintechX funciona?</strong> 
+                    Somos uma corretora de day trade de criptomoedas que utiliza inteligência artificial para operar e gerar lucros automaticamente.
+                  </p>
+                  <p>
+                    <strong>💰 Como ganho dinheiro investindo?</strong> 
+                    Ao investir em uma criptomoeda pela plataforma, você recebe uma parte dos lucros das operações realizadas com base no seu investimento.
+                  </p>
+                  <p>
+                    <strong>🚀 O que torna a FintechX diferente?</strong> 
+                    Nossa IA otimiza operações em tempo real, buscando maximizar ganhos com mínima intervenção do usuário.
+                  </p>
+                  <p>
+                    <strong>🎯 Como faço para começar?</strong> 
+                    Acesse a aba de investimentos, escolha a criptomoeda desejada e configure o valor do seu investimento.
+                  </p>
+                  <p>
+                    <strong>🏦 Como realizo saques?</strong> 
+                    Basta acessar sua conta e cadastrar sua chave Pix para transferências rápidas e seguras.
+                  </p>
+                </div>
+              </div>
+            )}
 
             {/* Subcard de Atividade Recente */}
             <div className="mt-4 sm:mt-8 bg-gray-700 p-4 sm:p-8 rounded-lg border border-gray-600">
