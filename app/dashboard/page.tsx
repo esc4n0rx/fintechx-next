@@ -11,13 +11,12 @@ export default function DashboardPage() {
     saldo_inicial: number;
     total_convite: number;
     codigo_convite_new?: string;
-    codigo_convite_ini?: string; // para saber se o usuário foi convidado
+    codigo_convite_ini?: string;
   } | null>(null);
   const [activeTab, setActiveTab] = useState<"home" | "convites" | "investimentos" | "conta">("home");
   const [showPopup, setShowPopup] = useState(true);
   const [invites, setInvites] = useState<any[]>([]);
 
-  // Estados para modais de depósito e saque
   const [depositModalOpen, setDepositModalOpen] = useState(false);
   const [withdrawModalOpen, setWithdrawModalOpen] = useState(false);
   const [depositAmount, setDepositAmount] = useState("");
@@ -26,11 +25,9 @@ export default function DashboardPage() {
     Array<{ type: "deposit" | "withdrawal"; amount: number; date: string }>
   >([]);
 
-  // Estado para produtos adquiridos
   const [hasProducts, setHasProducts] = useState(false);
   const [products, setProducts] = useState<any[]>([]);
 
-  // Função para buscar os convites e verificar depósito (bonus_creditado)
   async function fetchInvites(codigoConvite: string) {
     const { data, error } = await supabase
       .from("fintechx_convites")
@@ -52,7 +49,6 @@ export default function DashboardPage() {
     }
   }
 
-  // Verifica se o usuário já possui produtos
   useEffect(() => {
     async function checkProducts() {
       const telefone = localStorage.getItem("user_phone");
@@ -72,7 +68,6 @@ export default function DashboardPage() {
     checkProducts();
   }, []);
 
-  // Busca produtos do usuário (caso tenha)
   useEffect(() => {
     async function fetchProducts() {
       const telefone = localStorage.getItem("user_phone");
@@ -198,14 +193,12 @@ export default function DashboardPage() {
     }
   };
 
-  // Função auxiliar para calcular o prazo para o próximo rendimento (24h após o último cálculo)
   const calculateNextPayment = (last_calculo: string) => {
     const last = new Date(last_calculo);
     const next = new Date(last.getTime() + 24 * 60 * 60 * 1000);
     return next.toLocaleString();
   };
 
-  // Lógica de Depósito com ajuste de bônus para o convidador
   const handleDeposit = async () => {
     const amount = parseFloat(depositAmount);
     if (isNaN(amount) || amount <= 0) {
@@ -214,7 +207,6 @@ export default function DashboardPage() {
     }
     const userPhone = localStorage.getItem("user_phone");
 
-    // Atualiza o saldo do usuário depositante na tabela fintechx_usuarios
     const { error: updateError } = await supabase
       .from("fintechx_usuarios")
       .update({ saldo_inicial: (user?.saldo_inicial || 0) + amount })
@@ -224,7 +216,6 @@ export default function DashboardPage() {
       return;
     }
 
-    // Insere o depósito na tabela fintechx_deposits com o valor depositado e bonus_creditado false
     const { error: depositError } = await supabase
       .from("fintechx_deposits")
       .insert([{ telefone: userPhone, status: true, saldo: amount, bonus_creditado: false }]);
@@ -233,7 +224,6 @@ export default function DashboardPage() {
       return;
     }
 
-    // Se o usuário foi convidado, atualizar o saldo do convidador (apenas se o bônus ainda não foi creditado)
     if (user && user.codigo_convite_ini) {
       const inviterCode = user.codigo_convite_ini;
       const { data: inviterData, error: inviterError } = await supabase
@@ -250,7 +240,7 @@ export default function DashboardPage() {
         if (bonusUpdateError) {
           console.error("Erro ao atualizar bônus do convidador", bonusUpdateError);
         }
-        // Atualiza o registro de depósito para marcar que o bônus foi creditado (para que não seja feito novamente)
+
         const { error: bonusCreditError } = await supabase
           .from("fintechx_deposits")
           .update({ bonus_creditado: true })
@@ -262,7 +252,6 @@ export default function DashboardPage() {
       }
     }
 
-    // Atualiza o estado local
     setUser((prevUser) =>
       prevUser ? { ...prevUser, saldo_inicial: prevUser.saldo_inicial + amount } : prevUser
     );
@@ -297,7 +286,6 @@ export default function DashboardPage() {
     setWithdrawAmount("");
   };
 
-  // Simulated activity para o subcard na Home:
   const simulatedActivity = useMemo(() => {
     const names = [
       "Ana", "Bruno", "Carlos", "Daniela", "Eduardo", "Fernanda", "Gabriel", "Helena",
@@ -449,33 +437,16 @@ export default function DashboardPage() {
               </div>
             ) : (
               <div className="mt-4 sm:mt-8 bg-gray-700 p-4 sm:p-8 rounded-lg border border-gray-600">
-                <h3 className="text-lg sm:text-xl font-semibold mb-3 sm:mb-4 text-center">❓ Perguntas Frequentes</h3>
-                <div className="space-y-2 sm:space-y-3 text-sm sm:text-base text-gray-300">
-                  <p>
-                    <strong>📌 Como a FintechX funciona?</strong> 
-                    Somos uma corretora de day trade de criptomoedas que utiliza inteligência artificial para operar e gerar lucros automaticamente.
-                  </p>
-                  <p>
-                    <strong>💰 Como ganho dinheiro investindo?</strong> 
-                    Ao investir em uma criptomoeda pela plataforma, você recebe uma parte dos lucros das operações realizadas com base no seu investimento.
-                  </p>
-                  <p>
-                    <strong>🚀 O que torna a FintechX diferente?</strong> 
-                    Nossa IA otimiza operações em tempo real, buscando maximizar ganhos com mínima intervenção do usuário.
-                  </p>
-                  <p>
-                    <strong>🎯 Como faço para começar?</strong> 
-                    Acesse a aba de investimentos, escolha a criptomoeda desejada e configure o valor do seu investimento.
-                  </p>
-                  <p>
-                    <strong>🏦 Como realizo saques?</strong> 
-                    Basta acessar sua conta e cadastrar sua chave Pix para transferências rápidas e seguras.
-                  </p>
-                </div>
+              <h3 className="text-lg sm:text-xl font-semibold mb-3 sm:mb-4 text-center">❓ Perguntas Frequentes</h3>
+              <div className="space-y-2 sm:space-y-3 text-sm sm:text-base text-gray-300">
+                <p><strong>📌 Como funciona?</strong> Nossa IA opera day trade de criptomoedas automaticamente, gerando lucros.</p>
+                <p><strong>💰 Como ganho dinheiro?</strong> Invista e receba uma parte dos lucros das operações.</p>
+                <p><strong>🚀 O que nos diferencia?</strong> IA otimizada para máximo ganho com mínima intervenção.</p>
+                <p><strong>🎯 Como começar?</strong> Escolha uma criptomoeda na aba de investimentos e configure seu investimento.</p>
+                <p><strong>🏦 Como sacar?</strong> Cadastre sua chave Pix e transfira rapidamente.</p>
               </div>
+            </div>
             )}
-
-            {/* Subcard de Atividade Recente */}
             <div className="mt-4 sm:mt-8 bg-gray-700 p-4 sm:p-8 rounded-lg border border-gray-600">
               <h3 className="text-lg sm:text-xl font-semibold mb-3 text-center">Atividade Recente</h3>
               <div className="space-y-2 max-h-64 overflow-y-auto text-xs sm:text-sm">
@@ -579,9 +550,6 @@ export default function DashboardPage() {
           <div className="text-center">
             <h2 className="text-2xl sm:text-3xl font-semibold">Minha Conta</h2>
             <p className="text-sm sm:text-base text-gray-400 mt-2">Gerencie suas configurações pessoais.</p>
-            <div className="mt-4 sm:mt-6 bg-gray-700 p-4 sm:p-8 rounded-lg">
-              <p className="text-sm sm:text-base">⚙️ Configurações da conta estarão disponíveis em breve.</p>
-            </div>
             <div className="mt-4 sm:mt-6 flex flex-col sm:flex-row items-center justify-center gap-4">
               <button onClick={() => setDepositModalOpen(true)} className="bg-green-600 hover:bg-green-700 text-white py-2 px-4 rounded text-sm sm:text-base">
                 Depositar
@@ -628,7 +596,6 @@ export default function DashboardPage() {
           </button>
         </nav>
       </div>
-      {/* Estilos para a animação do banner */}
       <style jsx>{`
         @keyframes marquee {
           0% { transform: translateX(0%); }
