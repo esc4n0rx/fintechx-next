@@ -1,28 +1,16 @@
 // app/api/webhook/abacate-pay/route.ts
 import { NextResponse } from "next/server";
-import { createClient } from "@supabase/supabase-js";
-
-// Inicialize o cliente Supabase
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
-const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
-const supabase = createClient(supabaseUrl, supabaseServiceKey);
+import { supabase } from "@/lib/supabase";
 
 export async function POST(req: Request) {
   try {
-    // 1. Extrair payload do webhook
     const payload = await req.json();
-    console.log("Webhook recebido do Abacate Pay:", payload);
 
-    // 2. Verificar assinatura (opcional)
-    // const signature = req.headers.get("x-abacate-signature");
-    // if (!verifySignature(payload, signature)) { ... }
-
-    // 3. Verificar se é um evento de pagamento confirmado
     if (payload.event === "payment.confirmed" || payload.event === "billing.paid") {
       // 4. Extrair dados importantes
       const billingId = payload.data.id;
       const externalId = payload.data.products[0]?.externalId;
-      const amount = payload.data.amount / 100; // Converte de centavos para reais
+      const amount = payload.data.amount / 100;
       
       if (!externalId) {
         console.error("ExternalId não encontrado no payload", payload);
