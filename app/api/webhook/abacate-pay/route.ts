@@ -5,6 +5,7 @@ import { supabase } from "@/lib/supabase";
 export async function POST(req: Request) {
   try {
     const payload = await req.json();
+    console.log("Webhook recebido:", JSON.stringify(payload, null, 2));
 
     if (payload.event === "payment.confirmed" || payload.event === "billing.paid") {
       // 4. Extrair dados importantes
@@ -16,8 +17,7 @@ export async function POST(req: Request) {
         console.error("ExternalId não encontrado no payload", payload);
         return NextResponse.json({ error: "ExternalId não encontrado" }, { status: 400 });
       }
-      
-      // 5. Extrair telefone do usuário do externalId (formato: telefone-timestamp)
+
       const userPhone = externalId.split('-')[0];
       
       // 6. Obter dados do usuário
