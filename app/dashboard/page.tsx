@@ -1,11 +1,20 @@
 "use client";
 
 import { useEffect, useState, useMemo } from "react";
+import { useRouter } from "next/router";
 import { supabase } from "@/lib/supabase";
 import Swal from "sweetalert2";
 import { Home, Users, Briefcase, User, XCircle, Copy } from "lucide-react";
 
+// Definindo o tipo para os dados de pagamento retornados pela API do Abacate Pay
+type PaymentData = {
+  qrCodeUrl: string;
+  paymentLink: string;
+  paymentId: string;
+};
+
 export default function DashboardPage() {
+  // Estado do usuário com os dados do banco
   const [user, setUser] = useState<{
     nome: string;
     saldo_inicial: number;
@@ -13,21 +22,32 @@ export default function DashboardPage() {
     codigo_convite_new?: string;
     codigo_convite_ini?: string;
   } | null>(null);
+
+  // Estado para aba ativa
   const [activeTab, setActiveTab] = useState<"home" | "convites" | "investimentos" | "conta">("home");
+  // Estado para exibir o popup do Telegram
   const [showPopup, setShowPopup] = useState(true);
+  // Estado para os convites
   const [invites, setInvites] = useState<any[]>([]);
 
-  const [depositModalOpen, setDepositModalOpen] = useState(false);
-  const [withdrawModalOpen, setWithdrawModalOpen] = useState(false);
-  const [depositAmount, setDepositAmount] = useState("");
-  const [withdrawAmount, setWithdrawAmount] = useState("");
+  // Estados para os modais (depósito, saque, pagamento)
+  const [depositModalOpen, setDepositModalOpen] = useState<boolean>(false);
+  const [withdrawModalOpen, setWithdrawModalOpen] = useState<boolean>(false);
+  const [paymentModalOpen, setPaymentModalOpen] = useState<boolean>(false);
+  // Campos de entrada
+  const [depositAmount, setDepositAmount] = useState<string>("");
+  const [withdrawAmount, setWithdrawAmount] = useState<string>("");
+  // Estado para os dados de pagamento (com tipagem PaymentData)
+  const [paymentData, setPaymentData] = useState<PaymentData | null>(null);
+  // Histórico de transações
   const [transactionHistory, setTransactionHistory] = useState<
     Array<{ type: "deposit" | "withdrawal"; amount: number; date: string }>
   >([]);
-
-  const [hasProducts, setHasProducts] = useState(false);
+  // Estado para verificar se o usuário possui produtos ativos
+  const [hasProducts, setHasProducts] = useState<boolean>(false);
   const [products, setProducts] = useState<any[]>([]);
 
+  // Função para buscar convites (e checar se o depósito foi feito) do usuário
   async function fetchInvites(codigoConvite: string) {
     const { data, error } = await supabase
       .from("fintechx_convites")
@@ -42,32 +62,38 @@ export default function DashboardPage() {
             .eq("telefone", invite.telefone_convidado)
             .limit(1)
             .single();
-          return { ...invite, bonus_pago: (!depositError && depositData && depositData.status === true && depositData.bonus_creditado === true) };
+          return {
+            ...invite,
+            bonus_pago:
+              !depositError &&
+              depositData &&
+              depositData.status === true &&
+              depositData.bonus_creditado === true,
+          };
         })
       );
       setInvites(invitesWithStatus);
     }
   }
 
+  // Checa se o usuário possui algum produto na tabela fintechx_products
   useEffect(() => {
     async function checkProducts() {
       const telefone = localStorage.getItem("user_phone");
       if (telefone) {
-        const { data, error } = await supabase
+        const { data } = await supabase
           .from("fintechx_products")
           .select("id")
           .eq("telefone", telefone)
           .limit(1);
-        if (data && data.length > 0) {
-          setHasProducts(true);
-        } else {
-          setHasProducts(false);
-        }
+        // Forçamos o valor para booleano usando !! (caso data seja null)
+        setHasProducts(!!(data && data.length > 0));
       }
     }
     checkProducts();
   }, []);
 
+  // Busca os produtos do usuário se existirem
   useEffect(() => {
     async function fetchProducts() {
       const telefone = localStorage.getItem("user_phone");
@@ -86,6 +112,7 @@ export default function DashboardPage() {
     }
   }, [hasProducts]);
 
+  // Busca os dados do usuário no banco
   useEffect(() => {
     async function fetchUser() {
       const telefone = localStorage.getItem("user_phone");
@@ -107,12 +134,14 @@ export default function DashboardPage() {
     fetchUser();
   }, []);
 
+  // Sempre que o usuário for carregado, busca seus convites
   useEffect(() => {
     if (user?.codigo_convite_new) {
       fetchInvites(user.codigo_convite_new);
     }
   }, [user]);
 
+  // Função utilitária para copiar texto para o clipboard
   const copyToClipboard = (text: string) => {
     navigator.clipboard.writeText(text);
     Swal.fire({
@@ -123,9 +152,11 @@ export default function DashboardPage() {
     });
   };
 
+  // Array com imagens de perfil (aqui só tem uma, mas pode ser aumentado)
   const profileImages = ["profile1.png"];
   const randomProfile = profileImages[Math.floor(Math.random() * profileImages.length)];
 
+  // Lista de criptomoedas para exibição e compra
   const cryptocurrencies = [
     { name: "Bitcoin", logo: "/logos/btc.png", yield: 15, price: 70 },
     { name: "Ethereum", logo: "/logos/ethereum.png", yield: 25, price: 100 },
@@ -139,6 +170,7 @@ export default function DashboardPage() {
     { name: "Sui", logo: "/logos/sui.png", yield: 200, price: 400 },
   ];
 
+  // Calcula variações aleatórias (para o banner)
   const cryptoMovements = cryptocurrencies.map((crypto) => {
     let change = 0;
     if (crypto.price >= 200) {
@@ -149,6 +181,7 @@ export default function DashboardPage() {
     return { ...crypto, change };
   });
 
+  // Função para comprar um produto
   const comprarProduto = async (crypto: { name: string; price: number; yield: number }) => {
     if (!user) {
       Swal.fire({
@@ -193,77 +226,117 @@ export default function DashboardPage() {
     }
   };
 
-  const calculateNextPayment = (last_calculo: string) => {
+  // Função auxiliar para calcular o próximo pagamento (24h após o último cálculo)
+  const calculateNextPayment = (last_calculo: string): string => {
     const last = new Date(last_calculo);
     const next = new Date(last.getTime() + 24 * 60 * 60 * 1000);
     return next.toLocaleString();
   };
 
-  const handleDeposit = async () => {
+  // Função que gera o pagamento via Abacate Pay e exibe o modal de pagamento
+  const handleGeneratePayment = async () => {
     const amount = parseFloat(depositAmount);
     if (isNaN(amount) || amount <= 0) {
       Swal.fire({ title: "Erro", text: "Digite um valor válido", icon: "error" });
       return;
     }
     const userPhone = localStorage.getItem("user_phone");
-
-    const { error: updateError } = await supabase
-      .from("fintechx_usuarios")
-      .update({ saldo_inicial: (user?.saldo_inicial || 0) + amount })
-      .eq("telefone", userPhone);
-    if (updateError) {
-      Swal.fire({ title: "Erro", text: "Erro ao atualizar saldo no banco", icon: "error" });
-      return;
+    const externalId = `${userPhone}-${Date.now()}`;
+    
+    // Define as URLs de retorno e conclusão com base na URL atual
+    const baseUrl = window.location.origin;
+    const returnUrl = `${baseUrl}/dashboard`;
+    const completionUrl = `${baseUrl}/dashboard?payment_success=true&amount=${amount}`;
+    
+    const body = {
+      amount,
+      externalId,
+      productName: "Depósito FintechX",
+      description: "Depósito via Abacate Pay",
+      returnUrl,
+      completionUrl
+    };
+  
+    const response = await fetch("/api/payment", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body)
+    });
+    const result = await response.json();
+    // Armazena o paymentId retornado pela API para referência futura
+    const paymentId = result.data?.id || result.billing?.id;
+    localStorage.setItem("lastPaymentId", paymentId);
+    if (response.ok) {
+      // Atualiza o estado de paymentData com os dados recebidos
+      setPaymentData({
+        qrCodeUrl: result.billing.qrCodeUrl,
+        paymentLink: result.billing.url,
+        paymentId: paymentId
+      });
+      setPaymentModalOpen(true);
+    } else {
+      Swal.fire({ title: "Erro", text: result.error, icon: "error" });
     }
-
-    const { error: depositError } = await supabase
-      .from("fintechx_deposits")
-      .insert([{ telefone: userPhone, status: true, saldo: amount, bonus_creditado: false }]);
-    if (depositError) {
-      Swal.fire({ title: "Erro", text: "Erro ao registrar depósito", icon: "error" });
-      return;
-    }
-
-    if (user && user.codigo_convite_ini) {
-      const inviterCode = user.codigo_convite_ini;
-      const { data: inviterData, error: inviterError } = await supabase
-        .from("fintechx_usuarios")
-        .select("telefone, saldo_inicial")
-        .eq("codigo_convite_new", inviterCode)
-        .single();
-      if (!inviterError && inviterData) {
-        const bonus = amount * 0.37;
-        const { error: bonusUpdateError } = await supabase
-          .from("fintechx_usuarios")
-          .update({ saldo_inicial: inviterData.saldo_inicial + bonus })
-          .eq("telefone", inviterData.telefone);
-        if (bonusUpdateError) {
-          console.error("Erro ao atualizar bônus do convidador", bonusUpdateError);
-        }
-
-        const { error: bonusCreditError } = await supabase
-          .from("fintechx_deposits")
-          .update({ bonus_creditado: true })
-          .eq("telefone", userPhone)
-          .eq("bonus_creditado", false);
-        if (bonusCreditError) {
-          console.error("Erro ao marcar bônus creditado", bonusCreditError);
-        }
-      }
-    }
-
-    setUser((prevUser) =>
-      prevUser ? { ...prevUser, saldo_inicial: prevUser.saldo_inicial + amount } : prevUser
-    );
-    setTransactionHistory((prev) => [
-      { type: "deposit", amount, date: new Date().toLocaleString() },
-      ...prev,
-    ]);
-    Swal.fire({ title: "Sucesso", text: "Depósito realizado!", icon: "success" });
-    setDepositModalOpen(false);
-    setDepositAmount("");
   };
 
+  // Função para confirmar o pagamento (após o usuário ter efetuado o pagamento no gateway)
+  const handleConfirmPayment = async () => {
+    const amount = parseFloat(depositAmount);
+    const userPhone = localStorage.getItem("user_phone");
+  
+    // Obtem o paymentId do state ou do localStorage
+    const paymentId = paymentData?.paymentId || localStorage.getItem("lastPaymentId");
+  
+    if (!paymentId) {
+      Swal.fire({ 
+        title: "Atenção", 
+        text: "Não foi possível identificar seu pagamento. Entre em contato com o suporte se você já realizou o pagamento.", 
+        icon: "warning" 
+      });
+      return;
+    }
+  
+    // Verifica o status do pagamento na tabela fintechx_deposits usando a referência externa (paymentId)
+    const { data: paymentRecord, error: queryError } = await supabase
+      .from("fintechx_deposits")
+      .select("*")
+      .eq("referencia_externa", paymentId)
+      .single();
+      
+    if (queryError) {
+      Swal.fire({ 
+        title: "Pagamento em Processamento", 
+        text: "Seu pagamento está sendo processado. Aguarde alguns instantes e atualize a página.", 
+        icon: "info" 
+      });
+      return;
+    }
+      
+    if (paymentRecord && paymentRecord.status) {
+      // Se o pagamento já foi processado, notifica o usuário
+      Swal.fire({ 
+        title: "Sucesso", 
+        text: "Seu depósito já foi processado e adicionado ao seu saldo!", 
+        icon: "success" 
+      });
+       
+      // Limpa os estados e o localStorage
+      setDepositModalOpen(false);
+      setDepositAmount("");
+      setPaymentModalOpen(false);
+      setPaymentData(null);
+      localStorage.removeItem("lastPaymentId");
+      return;
+    }
+      
+    Swal.fire({ 
+      title: "Aguardando Confirmação", 
+      text: "Seu pagamento está sendo processado. Isso pode levar alguns minutos.", 
+      icon: "info" 
+    });
+  };
+
+  // Função para saque
   const handleWithdraw = async () => {
     const amount = parseFloat(withdrawAmount);
     if (isNaN(amount) || amount <= 0) {
@@ -286,6 +359,7 @@ export default function DashboardPage() {
     setWithdrawAmount("");
   };
 
+  // Simulação de atividade (apenas para exibição)
   const simulatedActivity = useMemo(() => {
     const names = [
       "Ana", "Bruno", "Carlos", "Daniela", "Eduardo", "Fernanda", "Gabriel", "Helena",
@@ -308,11 +382,11 @@ export default function DashboardPage() {
           detail: `comprou ${crypto.name}`
         });
       } else {
-        const amount = (Math.random() * 100 + 10).toFixed(2);
+        const amt = (Math.random() * 100 + 10).toFixed(2);
         activities.push({
           name,
           action,
-          detail: `sacou R$ ${amount}`
+          detail: `sacou R$ ${amt}`
         });
       }
     }
@@ -340,14 +414,59 @@ export default function DashboardPage() {
               >
                 Cancelar
               </button>
-              <button onClick={handleDeposit} className="bg-green-600 hover:bg-green-700 text-white py-1 px-3 rounded">
-                Depositar
+              <button onClick={handleGeneratePayment} className="bg-green-600 hover:bg-green-700 text-white py-1 px-3 rounded">
+                Gerar Pagamento
               </button>
             </div>
           </div>
         </div>
       )}
-
+  
+      {/* Modal de Pagamento */}
+      {paymentModalOpen && (
+        <div className="fixed inset-0 flex items-center justify-center bg-black bg-opacity-50 z-50">
+          <div className="bg-gray-800 p-4 sm:p-6 rounded-lg w-11/12 max-w-sm">
+            <h3 className="text-xl font-semibold mb-4">Pagamento - Depósito</h3>
+            {paymentData && (
+              <div className="text-center">
+                <p className="mb-2 font-bold text-yellow-400">
+                  Atenção: Faça o pagamento utilizando nossa plataforma.
+                </p>
+                {paymentData.qrCodeUrl ? (
+                  <img src={paymentData.qrCodeUrl} alt="QR Code" className="mx-auto mb-4" />
+                ) : null}
+                <p className="mb-2">Ou clique no link abaixo para pagar:</p>
+                <a
+                  href={paymentData.paymentLink}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-blue-400 underline"
+                >
+                  {paymentData.paymentLink}
+                </a>
+              </div>
+            )}
+            <div className="flex justify-end space-x-2 mt-4">
+              <button
+                onClick={() => {
+                  setPaymentModalOpen(false);
+                  setPaymentData(null);
+                }}
+                className="bg-red-600 hover:bg-red-700 text-white py-1 px-3 rounded"
+              >
+                Cancelar
+              </button>
+              <button
+                onClick={handleConfirmPayment}
+                className="bg-green-600 hover:bg-green-700 text-white py-1 px-3 rounded"
+              >
+                Confirmar Pagamento
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+  
       {/* Modal de Saque */}
       {withdrawModalOpen && (
         <div className="fixed inset-0 flex items-center justify-center bg-black bg-opacity-50 z-50">
@@ -374,7 +493,7 @@ export default function DashboardPage() {
           </div>
         </div>
       )}
-
+  
       {/* Popup do Telegram */}
       {showPopup && (
         <div className="fixed inset-0 flex items-center justify-center bg-black bg-opacity-50">
@@ -400,7 +519,7 @@ export default function DashboardPage() {
           </div>
         </div>
       )}
-
+  
       <div className="w-full max-w-full sm:max-w-xl p-4 sm:p-8 bg-gray-800 text-white rounded-2xl shadow-lg border border-gray-700 flex flex-col justify-between">
         {/* Seção Principal */}
         {activeTab === "home" && (
@@ -436,17 +555,19 @@ export default function DashboardPage() {
                 )}
               </div>
             ) : (
+              // Card de FAQ se não houver ativos
               <div className="mt-4 sm:mt-8 bg-gray-700 p-4 sm:p-8 rounded-lg border border-gray-600">
-              <h3 className="text-lg sm:text-xl font-semibold mb-3 sm:mb-4 text-center">❓ Perguntas Frequentes</h3>
-              <div className="space-y-2 sm:space-y-3 text-sm sm:text-base text-gray-300">
-                <p><strong>📌 Como funciona?</strong> Nossa IA opera day trade de criptomoedas automaticamente, gerando lucros.</p>
-                <p><strong>💰 Como ganho dinheiro?</strong> Invista e receba uma parte dos lucros das operações.</p>
-                <p><strong>🚀 O que nos diferencia?</strong> IA otimizada para máximo ganho com mínima intervenção.</p>
-                <p><strong>🎯 Como começar?</strong> Escolha uma criptomoeda na aba de investimentos e configure seu investimento.</p>
-                <p><strong>🏦 Como sacar?</strong> Cadastre sua chave Pix e transfira rapidamente.</p>
+                <h3 className="text-lg sm:text-xl font-semibold mb-3 sm:mb-4 text-center">❓ Perguntas Frequentes</h3>
+                <div className="space-y-2 sm:space-y-3 text-sm sm:text-base text-gray-300">
+                  <p><strong>📌 Como funciona?</strong> Nossa IA opera day trade de criptomoedas automaticamente, gerando lucros.</p>
+                  <p><strong>💰 Como ganho dinheiro?</strong> Invista e receba uma parte dos lucros das operações.</p>
+                  <p><strong>🚀 O que nos diferencia?</strong> IA otimizada para máximo ganho com mínima intervenção.</p>
+                  <p><strong>🎯 Como começar?</strong> Escolha uma criptomoeda na aba de investimentos e configure seu investimento.</p>
+                  <p><strong>🏦 Como sacar?</strong> Cadastre sua chave Pix e transfira rapidamente.</p>
+                </div>
               </div>
-            </div>
             )}
+            {/* Subcard de Atividade Recente */}
             <div className="mt-4 sm:mt-8 bg-gray-700 p-4 sm:p-8 rounded-lg border border-gray-600">
               <h3 className="text-lg sm:text-xl font-semibold mb-3 text-center">Atividade Recente</h3>
               <div className="space-y-2 max-h-64 overflow-y-auto text-xs sm:text-sm">
@@ -460,7 +581,7 @@ export default function DashboardPage() {
             </div>
           </div>
         )}
-
+  
         {/* Seção de Convites */}
         {activeTab === "convites" && (
           <div className="text-center">
@@ -494,7 +615,7 @@ export default function DashboardPage() {
             </div>
           </div>
         )}
-
+  
         {/* Seção de Investimentos */}
         {activeTab === "investimentos" && (
           <div className="text-center">
@@ -544,7 +665,7 @@ export default function DashboardPage() {
             </div>
           </div>
         )}
-
+  
         {/* Seção de Conta */}
         {activeTab === "conta" && (
           <div className="text-center">
@@ -575,7 +696,7 @@ export default function DashboardPage() {
             </div>
           </div>
         )}
-
+  
         {/* Navbar */}
         <nav className="flex justify-around bg-gray-900 p-2 sm:p-4 rounded-lg mt-4 border border-gray-700">
           <button onClick={() => setActiveTab("home")} className={`flex flex-col items-center ${activeTab === "home" ? "text-blue-400" : "text-white"}`}>
@@ -607,4 +728,11 @@ export default function DashboardPage() {
       `}</style>
     </div>
   );
+}
+
+// Função auxiliar para calcular o próximo pagamento (24h após o último cálculo)
+function calculateNextPayment(last_calculo: string): string {
+  const last = new Date(last_calculo);
+  const next = new Date(last.getTime() + 24 * 60 * 60 * 1000);
+  return next.toLocaleString();
 }

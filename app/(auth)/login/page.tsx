@@ -18,7 +18,6 @@ export default function LoginPage() {
     setMessage(null);
     setLoading(true);
 
-    // Buscar usuário no Supabase
     const { data: user, error } = await supabase
       .from("fintechx_usuarios")
       .select("telefone")
@@ -32,7 +31,6 @@ export default function LoginPage() {
       return;
     }
 
-    // Salvar telefone no Local Storage
     localStorage.setItem("user_phone", user.telefone);
 
     setMessage({ type: "success", text: "Login bem-sucedido! Redirecionando..." });
@@ -48,7 +46,6 @@ export default function LoginPage() {
           <h2 className="text-2xl font-semibold text-center mt-2">FintechX</h2>
         </div>
 
-        {/* Notificação dentro do card */}
         {message && (
           <div
             className={`flex items-center gap-2 p-3 rounded-lg mb-4 ${
